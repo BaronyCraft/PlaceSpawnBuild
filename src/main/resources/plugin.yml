@@ -1,0 +1,15 @@
+name: PlaceSpawnbuild
+author: BaronyCraft
+description: Place a schematic at some point in a world, finding the highest point there, and extend lowest blocks to make ground contact
+version: 1.0.0
+api-version: 1.13
+main: de.guntram.bukkit.PlaceSpawnbuild.Main
+depend: [ WorldEdit ]
+commands:
+  placespawnbuild:
+    description: place a schematic and build down to ground
+    usage: /placespawnbuild <schematic name> <world> <x> <z> <yoffset>
+permissions:
+  placespawnbuild.place:
+    description: Use the placespawnbuild command
+    default: op
