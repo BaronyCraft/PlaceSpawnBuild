@@ -115,7 +115,7 @@ public class API {
             System.err.println(ex);
             return -1;
         }
-        
+
         // now replace air blocks below the structure with blocks from the lowest layer of the structure
         for (int dx=0; dx<dimensions.getBlockX(); dx++) {
             for (int dz=0; dz<dimensions.getBlockZ(); dz++) {
@@ -144,10 +144,7 @@ public class API {
                     int blockz=z+dz-dy*addz;
                     Block toPaste=world.getBlockAt(blockx, y+dy, blockz);
                     mat=toPaste.getType();
-                    if (!mat.isEmpty()
-                    &&  !mat.toString().toLowerCase().endsWith("log")
-                    &&  !mat.toString().toLowerCase().endsWith("leaves")
-                    )
+                    if (!shouldBeReplaced(mat))
                         break;
                     if (blockx < absminx) { absminx=blockx; }
                     if (blockz < absminz) { absminz=blockz; }
@@ -155,24 +152,82 @@ public class API {
                     if (blockz > absmaxz) { absmaxz=blockz; }
                     if (y+dy   < absminy) { absminy=y+dy;   }
 
+                    toPaste.setBlockData(toCopy);
                     if (isOutgoingStair) {
                         // If we placed a stair, place anything above it, like rails, as well
-                        for (int yUp=1; isOutgoingStair && yUp<dimensions.getBlockY(); yUp++) {
+                        int yUp=1;
+                        while (yUp<dimensions.getBlockY()) {
                             Block blockAboveStair=world.getBlockAt(x+dx, y+yUp, z+dz);
                             if (blockAboveStair.getType().isEmpty())
                                 break;
                             world.getBlockAt(x+dx-dy*addx, y+dy+yUp, z+dz-dy*addz).setBlockData(blockAboveStair.getBlockData());
+                            yUp++;
                         }
-                    } else {
-                        toPaste.setBlockData(toCopy);
+                        while (yUp<dimensions.getBlockX()) {
+                            world.getBlockAt(x+dx-dy*addx, y+dy+yUp, z+dz-dy*addz).setType(Material.AIR);
+                            yUp++;
+                        }
                     }
                 }
             }
         }
+        
+        // Now that we know the maximum size of the area we've been building in, place stairs again; this time,
+        // don't stop at full blocks (but don't break them either).
+        
+        int sx, sz, ex, ez;
+        sx=x; ex=x+dimensions.getBlockX()-1;
+        sz=z; ez=z+dimensions.getBlockZ()-1;
+        forcePlaceStairs(world, sx, sx, y, sz+1, ez-1, -1,  0, sx-absminx+1);
+        forcePlaceStairs(world, ex, ex, y, sz+1, ez-1,  1,  0, absmaxx-ex+1);
+        forcePlaceStairs(world, sx+1, ex-1, y, sz, sz,  0, -1, sz-absminz+1);
+        forcePlaceStairs(world, sx+1, ex-1, y, ez, ez,  0,  1, absmaxz-ez+1);
+        
         if (processor!=null) {
             processor.processBuildResult(world, absminx, absmaxx, absminy, absmaxy, absminz, absmaxz);
         }
         return y;
+    }
+    
+    private void forcePlaceStairs(World world, int fromx, int tox, int y, int fromz, int toz, int dx, int dz, int count) {
+        // System.out.println("forcing stair from X="+fromx+"/"+tox+"  Z="+fromz+"/"+toz+" direction x="+dx+"/"+dz+" y="+y+" out by "+count+" blocks");
+        for (int x=fromx; x<=tox; x++) {
+            for (int z=fromz; z<=toz; z++) {
+                Block sourceBlock=world.getBlockAt(x, y, z);
+                for (int i=1; i<count; i++) {
+                    Block targetBlock = world.getBlockAt(x+i*dx, y-i, z+i*dz);
+                    Material targetMat=targetBlock.getType();
+                    if (shouldBeReplaced(targetMat)) {
+                        // System.out.println("\tat "+targetBlock.getLocation()+": material "+targetMat.toString()+"replacing with"+sourceBlock.getBlockData());
+                        targetBlock.setBlockData(sourceBlock.getBlockData());
+                        // make sure it's walkable
+                        int yUp=1;
+                        while(yUp<=3) {
+                            Block blockAboveStair=world.getBlockAt(x, y+yUp, z);
+                            if (blockAboveStair.getType().isEmpty())
+                                break;
+                            world.getBlockAt(x+i*dx, y-i+yUp, z+i*dz).setBlockData(world.getBlockAt(x, y+yUp, z).getBlockData());
+                            yUp++;
+                        }
+                        while (yUp<=3) {
+                            world.getBlockAt(x+i*dx, y-i+yUp, z+i*dz).setType(Material.AIR);
+                            yUp++;
+                        }
+                    } else {
+                        // System.out.println("\tat "+targetBlock.getLocation()+": material "+targetMat.toString()+"NOT replacing");
+                    }
+                }
+            }
+        }
+    }
+    
+    private boolean shouldBeReplaced(Material mat) {
+        return
+            mat.isEmpty()
+        ||  (!mat.isSolid() && mat!=Material.WATER && mat!=Material.LAVA)
+        ||  mat.toString().toLowerCase().endsWith("log")
+        ||  mat.toString().toLowerCase().endsWith("leaves")
+        ;
     }
     
     private boolean isCubeEmpty(World world, int minx, int sizex, int miny, int sizey, int minz, int sizez) {
