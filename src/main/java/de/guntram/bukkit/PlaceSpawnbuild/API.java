@@ -20,11 +20,9 @@ import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
 
 /**
@@ -57,6 +55,12 @@ public class API {
     }
     
     public int build(Clipboard clipboard, World world, int x, int z, int dy) {
+        return build(clipboard, world, x, z, dy, null);
+    }
+        
+    public int build(Clipboard clipboard, World world, int x, int z, int dy, BuildResultProcessor processor) {
+        int absminx, absmaxx, absminy, absmaxy, absminz, absmaxz;
+        
         int y=(world.getMaxHeight()-1);
         if (world.getEnvironment() == World.Environment.NETHER) {
             y=126;
@@ -64,6 +68,11 @@ public class API {
         BlockVector3 dimensions = clipboard.getDimensions();
         x-=dimensions.getBlockX()/2;
         z-=dimensions.getBlockZ()/2;
+        absminx=x;
+        absminz=z;
+        absmaxx=absminx+dimensions.getBlockX()-1;
+        absmaxz=absminz+dimensions.getBlockZ()-1;
+        
 
         // go down from world height to empty space; mainly for nether
         while (y>0 && !isCubeEmpty(world, x, dimensions.getBlockX(), y, 1, z, dimensions.getBlockZ())) {
@@ -74,16 +83,20 @@ public class API {
         while (y>0 && y>dy && isCubeEmpty(world, x, dimensions.getBlockX(), y, 1, z, dimensions.getBlockZ())) {
             y--;
         }
-        y++;    // up 1 to be where space was empty
-        if (y<=dy) {
+        if (y<=dy || y<=0) {
             // We can't find ANY air block. In that case, fall back to something that should work in most cases
             y=64;
+        } else {
+            y++;    // up 1 to be where space was empty
+            y-=dy;
+
         }
-        y-=dy;
+        // double check to not break bedrock
         if (y<=0) {
-            // don't break the lowest layer of bedrock
             y=1;
         }
+        absminy=y;
+        absmaxy=y+dimensions.getBlockY()-1;
         
         int maxBlocks=dimensions.getBlockX()*dimensions.getBlockY()*dimensions.getBlockZ();
         clipboard.setOrigin(clipboard.getRegion().getMinimumPoint());
@@ -125,22 +138,39 @@ public class API {
                         continue;
                     }
                 }
-                boolean isStair=(addx!=0 || addz!=0);
+                boolean isOutgoingStair=(addx!=0 || addz!=0);
                 for (dy=-1;y+dy>0;dy--) {
-                    Block toPaste=world.getBlockAt(x+dx-dy*addx, y+dy, z+dz-dy*addz);
+                    int blockx=x+dx-dy*addx;
+                    int blockz=z+dz-dy*addz;
+                    Block toPaste=world.getBlockAt(blockx, y+dy, blockz);
                     mat=toPaste.getType();
-                    if (!mat.isEmpty())
+                    if (!mat.isEmpty()
+                    &&  !mat.toString().toLowerCase().endsWith("log")
+                    &&  !mat.toString().toLowerCase().endsWith("leaves")
+                    )
                         break;
-                    toPaste.setBlockData(toCopy);
-                    // If we placed a stair, place anything above it, like rails, as well
-                    for (int yUp=1; isStair && yUp<10; yUp++) {
-                        Block blockAboveStair=world.getBlockAt(x+dx, y+yUp, z+dz);
-                        if (blockAboveStair.getType().isEmpty())
-                            break;
-                        world.getBlockAt(x+dx-dy*addx, y+dy+yUp, z+dz-dy*addz).setBlockData(blockAboveStair.getBlockData());
+                    if (blockx < absminx) { absminx=blockx; }
+                    if (blockz < absminz) { absminz=blockz; }
+                    if (blockx > absmaxx) { absmaxx=blockx; }
+                    if (blockz > absmaxz) { absmaxz=blockz; }
+                    if (y+dy   < absminy) { absminy=y+dy;   }
+
+                    if (isOutgoingStair) {
+                        // If we placed a stair, place anything above it, like rails, as well
+                        for (int yUp=1; isOutgoingStair && yUp<dimensions.getBlockY(); yUp++) {
+                            Block blockAboveStair=world.getBlockAt(x+dx, y+yUp, z+dz);
+                            if (blockAboveStair.getType().isEmpty())
+                                break;
+                            world.getBlockAt(x+dx-dy*addx, y+dy+yUp, z+dz-dy*addz).setBlockData(blockAboveStair.getBlockData());
+                        }
+                    } else {
+                        toPaste.setBlockData(toCopy);
                     }
                 }
             }
+        }
+        if (processor!=null) {
+            processor.processBuildResult(world, absminx, absmaxx, absminy, absmaxy, absminz, absmaxz);
         }
         return y;
     }
