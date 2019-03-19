@@ -15,7 +15,6 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -92,7 +91,7 @@ public class Main extends JavaPlugin implements Listener, BuildResultProcessor {
                 return true;
             }
 
-            int yPos = API.getInstance().build(clipboard, world, x, z, dy);
+            int yPos = API.getInstance().build(clipboard, world, x, z, dy, this);
             sender.sendMessage(schemaFile.getName()+" has been placed at "+x+"/"+z+" height "+yPos);
             return true;
         }
@@ -109,6 +108,9 @@ public class Main extends JavaPlugin implements Listener, BuildResultProcessor {
                     minz, maxz,
                     null, // admin claim
                     null, null, null);
+            if (!result.succeeded) {
+                System.err.println("Crate claim at "+minx+"/"+minz+" to "+maxx+"/"+maxy+" failed");
+            }
         } catch (NoClassDefFoundError ex) {
             System.err.println("GP not found");
         }
